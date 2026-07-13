@@ -1035,6 +1035,73 @@ html,body{height:100%;overflow:hidden;}
   }
 </style>
 
+
+<style id="portrait-kiosk-final-fixes">
+  .seat-number{
+    font-weight:1000 !important;
+    font-size:clamp(38px,4.2vw,70px) !important;
+    line-height:1 !important;
+    text-shadow:0 3px 0 rgba(255,255,255,.9),0 8px 18px rgba(7,31,74,.20);
+  }
+
+  .seat-caption{
+    font-weight:1000 !important;
+    letter-spacing:1.2px;
+  }
+
+  .progress{
+    width:100% !important;
+  }
+
+  /* Portrait kiosk/tablet: 3 cards on first row and centered MBA/MCA below */
+  @media (min-width:701px) and (max-width:1100px){
+    .courses{
+      grid-template-columns:repeat(6,minmax(0,1fr)) !important;
+    }
+
+    .course-card:nth-child(1),
+    .course-card:nth-child(2),
+    .course-card:nth-child(3){
+      grid-column:span 2;
+    }
+
+    .course-card:nth-child(4){
+      grid-column:2 / span 2;
+    }
+
+    .course-card:nth-child(5){
+      grid-column:4 / span 2;
+    }
+
+    .seat-number{
+      font-size:clamp(42px,6vw,72px) !important;
+    }
+  }
+
+  @media (max-width:700px){
+    .seat-number{
+      font-size:clamp(42px,13vw,62px) !important;
+    }
+  }
+</style>
+
+
+<style id="final-number-style">
+.seat-number{
+    font-size:clamp(52px,6vw,90px)!important;
+    font-weight:1000!important;
+    color:#0a2b63!important;
+    text-shadow:
+      0 2px 0 #fff,
+      0 4px 0 rgba(255,255,255,.8),
+      0 10px 18px rgba(0,0,0,.18);
+    letter-spacing:-2px;
+}
+.seat-caption{
+    display:none!important;
+}
+</style>
+
 </head>
 <body>
   <main class="page">
@@ -1059,14 +1126,14 @@ html,body{height:100%;overflow:hidden;}
 
 <section class="hero">
       <div class="eyebrow">Admissions Open · Session 2026–27</div>
-      <h2>Seats <span>Left</span></h2>
+      <h2>Admissions <span>Confirmed</span></h2>
       <p>Explore the current programme-wise seat availability. Figures shown below should be updated only from verified admission records.</p>
-      <div class="simulation-notice">
+      <div class="simulation-notice" style="display:none;">
         <strong>DEMO / ILLUSTRATIVE COUNTER</strong>
-        <span>These numbers decrease automatically for display testing and do not represent verified live admissions.</span>
+        <span>These figures increase automatically for display testing and do not represent verified live admissions.</span>
       </div>
       <div class="countdown-wrap">
-        <span>Next simulated update in</span>
+        <span>Next simulated increase in</span>
         <strong id="countdown">30:00</strong>
       </div>
       <div class="updated" id="updatedText"></div>
@@ -1076,7 +1143,7 @@ html,body{height:100%;overflow:hidden;}
 
     <section class="admin-panel">
       <details>
-        <summary>Admissions office: update verified seat counts</summary>
+        <summary>Admissions office: update starting values</summary>
         <div class="admin-grid" id="adminGrid"></div>
         <button class="save-btn" id="saveBtn">Save & Update Display</button>
       </details>
@@ -1096,82 +1163,84 @@ html,body{height:100%;overflow:hidden;}
   </main>
 
   
+  
   <script>
     const programmes = [
-      { id:"bba", name:"BBA", total:90, icon:"🎓" },
-      { id:"bca", name:"BCA", total:120, icon:"⌨" },
-      { id:"bcom", name:"B.Com (Hons.)", total:30, icon:"₹" },
-      { id:"mba", name:"MBA", total:90, icon:"💼" },
-      { id:"mca", name:"MCA", total:30, icon:"⚙" }
+      { id:"bba", name:"BBA", icon:"🎓", start:45 },
+      { id:"bca", name:"BCA", icon:"⌨", start:60 },
+      { id:"bcom", name:"B.Com (Hons.)", icon:"₹", start:15 },
+      { id:"mba", name:"MBA", icon:"💼", start:45 },
+      { id:"mca", name:"MCA", icon:"⚙", start:15 }
     ];
 
     const INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    const STORAGE_KEY = "gjimtAdmissionCounter_v2";
+    const TIME_KEY = "gjimtAdmissionCounterLastUpdate_v2";
+    const STAMP_KEY = "gjimtAdmissionCounterStamp_v2";
 
-    const defaultAvailable = Object.fromEntries(
-      programmes.map(p => [p.id, Math.ceil(p.total * 0.5)])
+    const defaultCounts = Object.fromEntries(
+      programmes.map(p => [p.id, p.start])
     );
 
-    let available = JSON.parse(localStorage.getItem("gjimtSeatAvailability") || "null")
-                    || defaultAvailable;
+    let counts = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || defaultCounts;
+    let lastAutoUpdate = Number(localStorage.getItem(TIME_KEY)) || Date.now();
 
-    let lastAutoUpdate = Number(localStorage.getItem("gjimtLastAutoUpdate")) || Date.now();
-
-    function clampValues(){
+    function normalizeCounts(){
       programmes.forEach(p => {
-        available[p.id] = Math.max(0, Math.min(p.total, Number(available[p.id] ?? 0)));
+        const value = Number(counts[p.id]);
+        counts[p.id] = Number.isFinite(value) && value >= 0 ? Math.floor(value) : p.start;
       });
+    }
+
+    function saveState(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
+      localStorage.setItem(TIME_KEY, String(lastAutoUpdate));
+      localStorage.setItem(STAMP_KEY, new Date().toLocaleString("en-IN"));
     }
 
     function applyElapsedIntervals(){
       const now = Date.now();
-      const elapsed = now - lastAutoUpdate;
-      const completedIntervals = Math.floor(elapsed / INTERVAL_MS);
+      const completedIntervals = Math.floor((now - lastAutoUpdate) / INTERVAL_MS);
 
       if(completedIntervals > 0){
         programmes.forEach(p => {
-          available[p.id] = Math.max(0, available[p.id] - completedIntervals);
+          counts[p.id] += completedIntervals;
         });
 
         lastAutoUpdate += completedIntervals * INTERVAL_MS;
-        localStorage.setItem("gjimtSeatAvailability", JSON.stringify(available));
-        localStorage.setItem("gjimtLastAutoUpdate", String(lastAutoUpdate));
-        localStorage.setItem("gjimtSeatUpdatedAt", new Date().toLocaleString("en-IN"));
+        saveState();
       }
     }
 
     function renderCards(){
-      clampValues();
+      normalizeCounts();
       const list = document.getElementById("courseList");
 
-      list.innerHTML = programmes.map(p => {
-        const left = available[p.id];
-        const filled = p.total - left;
-        const progress = Math.round((filled / p.total) * 100);
+      list.innerHTML = programmes.map(p => `
+        <article class="course-card">
+          <div class="icon">${p.icon}</div>
+          <div class="course-name">${p.name}</div>
+          <div class="seat-box">
+            <div class="seat-number">${counts[p.id]}</div>
+            <div class="seat-caption"></div>
+          </div>
+          <div class="progress" style="--progress:100%"></div>
+        </article>
+      `).join("");
 
-        return `
-          <article class="course-card">
-            <div class="icon">${p.icon}</div>
-            <div class="course-name">${p.name}</div>
-            <div class="seat-box">
-              <div class="seat-number">${left} / ${p.total}</div>
-              <div class="seat-caption">Illustrative Seats Available</div>
-            </div>
-            <div class="progress" style="--progress:${progress}%"></div>
-          </article>
-        `;
-      }).join("");
-
-      const stamp = localStorage.getItem("gjimtSeatUpdatedAt");
+      const stamp = localStorage.getItem(STAMP_KEY);
       document.getElementById("updatedText").textContent =
-        "Last simulated update: " + (stamp || new Date(lastAutoUpdate).toLocaleString("en-IN"));
+        "Last simulated increase: " + (stamp || new Date(lastAutoUpdate).toLocaleString("en-IN"));
     }
 
     function renderAdmin(){
       const grid = document.getElementById("adminGrid");
+      if(!grid) return;
+
       grid.innerHTML = programmes.map(p => `
         <label>${p.name}
-          <input type="number" min="0" max="${p.total}" id="input-${p.id}"
-                 value="${available[p.id]}" aria-label="${p.name} seats available">
+          <input type="number" min="0" id="input-${p.id}"
+                 value="${counts[p.id]}" aria-label="${p.name} admission count">
         </label>
       `).join("");
     }
@@ -1193,24 +1262,22 @@ html,body{height:100%;overflow:hidden;}
       document.getElementById("countdown").textContent = `${minutes}:${seconds}`;
     }
 
-    document.getElementById("saveBtn").addEventListener("click", () => {
-      programmes.forEach(p => {
-        const value = Number(document.getElementById("input-" + p.id).value);
-        available[p.id] = Math.max(0, Math.min(p.total, value));
+    const saveBtn = document.getElementById("saveBtn");
+    if(saveBtn){
+      saveBtn.addEventListener("click", () => {
+        programmes.forEach(p => {
+          const value = Number(document.getElementById("input-" + p.id).value);
+          counts[p.id] = Number.isFinite(value) && value >= 0 ? Math.floor(value) : counts[p.id];
+        });
+
+        lastAutoUpdate = Date.now();
+        saveState();
+        renderCards();
+        renderAdmin();
+        updateCountdown();
+        alert("Starting values have been saved and the 30-minute timer restarted.");
       });
-
-      lastAutoUpdate = Date.now();
-      const nowText = new Date().toLocaleString("en-IN");
-
-      localStorage.setItem("gjimtSeatAvailability", JSON.stringify(available));
-      localStorage.setItem("gjimtLastAutoUpdate", String(lastAutoUpdate));
-      localStorage.setItem("gjimtSeatUpdatedAt", nowText);
-
-      renderCards();
-      renderAdmin();
-      updateCountdown();
-      alert("Illustrative values have been updated and the 30-minute timer restarted.");
-    });
+    }
 
     applyElapsedIntervals();
     renderCards();
@@ -1218,6 +1285,7 @@ html,body{height:100%;overflow:hidden;}
     updateCountdown();
     setInterval(updateCountdown, 1000);
   </script>
+
 
 </body>
 </html>
